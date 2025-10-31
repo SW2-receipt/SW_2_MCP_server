@@ -1,0 +1,10 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Uploaded test images (계획서의 'uploads' 폴더)
+uploads/
+
+# Virtual environment (나중에 가상환경을 쓰게 될 경우)
+venv/
+.venv/
