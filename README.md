@@ -54,7 +54,7 @@ python -m venv venv
 
 3. 필요 라이브러리 설치
 
-requirements.txt 파일은 이 프로젝트가 사용하는 모든 라이브러리의 목록입니다. (GitHub에 푸시하기 전에 pip freeze > requirements.txt 명령어로 꼭 생성해주세요.)
+requirements.txt 파일은 이 프로젝트가 사용하는 모든 라이브러리의 목록입니다.
 
 pip install -r requirements.txt
 
