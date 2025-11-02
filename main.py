@@ -2,17 +2,25 @@ from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import shutil
 import os
+import sys
 from dotenv import load_dotenv
 from typing import Optional
+
+# Windows에서 multiprocessing 호환성 문제 해결
+if sys.platform == 'win32':
+    import multiprocessing
+    multiprocessing.freeze_support()
 
 # --- Azure SDK 임포트 ---
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
 from azure.ai.vision.imageanalysis.models import VisualFeatures
+from azure.ai.textanalytics import TextAnalyticsClient
 from azure.core.credentials import AzureKeyCredential
 # -------------------------
 
 # --- Parser 모듈 임포트 ---
 from parser import parse_receipt, categorize_receipt
+from nlp_analyzer import analyze_text_with_nlp, extract_receipt_insights
 # -------------------------
 
 load_dotenv()
@@ -26,6 +34,31 @@ except KeyError:
     print("정확히 설정되었는지 확인해 주세요.")
     print("="*50)
     exit()
+
+# Text Analytics 설정 (선택사항)
+AZURE_TEXT_ANALYTICS_KEY = os.environ.get("AZURE_TEXT_ANALYTICS_KEY")
+AZURE_TEXT_ANALYTICS_ENDPOINT = os.environ.get("AZURE_TEXT_ANALYTICS_ENDPOINT")
+
+# 엔드포인트 URL 정리 (끝에 슬래시 제거)
+AZURE_VISION_ENDPOINT = AZURE_VISION_ENDPOINT.strip().rstrip('/')
+AZURE_VISION_KEY = AZURE_VISION_KEY.strip()
+
+if AZURE_TEXT_ANALYTICS_ENDPOINT:
+    AZURE_TEXT_ANALYTICS_ENDPOINT = AZURE_TEXT_ANALYTICS_ENDPOINT.strip().rstrip('/')
+if AZURE_TEXT_ANALYTICS_KEY:
+    AZURE_TEXT_ANALYTICS_KEY = AZURE_TEXT_ANALYTICS_KEY.strip()
+
+# 디버깅용 출력 (키는 일부만 표시)
+print("="*50)
+print("Azure 설정 확인:")
+print(f"Vision 엔드포인트: {AZURE_VISION_ENDPOINT}")
+print(f"Vision 키 (처음 10자리): {AZURE_VISION_KEY[:10]}...")
+if AZURE_TEXT_ANALYTICS_ENDPOINT:
+    print(f"Text Analytics 엔드포인트: {AZURE_TEXT_ANALYTICS_ENDPOINT}")
+    print(f"Text Analytics 키 (처음 10자리): {AZURE_TEXT_ANALYTICS_KEY[:10]}...")
+else:
+    print("Text Analytics: 설정되지 않음 (선택사항)")
+print("="*50)
 
 app = FastAPI()
 
@@ -46,6 +79,22 @@ client = ImageAnalysisClient(
 )
 
 print("Azure AI Vision 클라이언트가 성공적으로 준비되었습니다.")
+
+# Text Analytics 클라이언트 초기화 (선택사항)
+text_analytics_client = None
+if AZURE_TEXT_ANALYTICS_KEY and AZURE_TEXT_ANALYTICS_ENDPOINT:
+    try:
+        text_analytics_client = TextAnalyticsClient(
+            endpoint=AZURE_TEXT_ANALYTICS_ENDPOINT,
+            credential=AzureKeyCredential(AZURE_TEXT_ANALYTICS_KEY)
+        )
+        print("Azure Text Analytics 클라이언트가 성공적으로 준비되었습니다.")
+    except Exception as e:
+        print(f"⚠️ Text Analytics 클라이언트 초기화 실패: {e}")
+        print("NLP 분석 없이 계속 진행합니다.")
+else:
+    print("⚠️ Text Analytics 설정이 없습니다. NLP 분석 기능이 비활성화됩니다.")
+    print("   (선택사항: .env에 AZURE_TEXT_ANALYTICS_KEY와 AZURE_TEXT_ANALYTICS_ENDPOINT 추가)")
 
 
 @app.get("/")
@@ -113,6 +162,10 @@ async def analyze_receipt(
     # --- 4. 카테고리 분류 ---
     category = categorize_receipt(extracted_text, parsed_data.get("store_name"))
     
+    # --- 5. NLP 분석 (Azure Text Analytics) ---
+    nlp_result = analyze_text_with_nlp(extracted_text, text_analytics_client)
+    insights = extract_receipt_insights(nlp_result, parsed_data)
+    
     # (디버깅) 터미널에 추출 결과를 출력
     print("--- 정규식 추출 결과 ---")
     print(f"사용자 ID: {user_id}")
@@ -120,6 +173,19 @@ async def analyze_receipt(
     print(f"날짜: {parsed_data.get('normalized_date')}")
     print(f"금액: {parsed_data.get('total_price')}")
     print(f"카테고리: {category}")
+    items = parsed_data.get('items', [])
+    if items:
+        print(f"품목 수: {len(items)}개")
+        for i, item in enumerate(items[:5], 1):  # 최대 5개만 출력
+            print(f"  {i}. {item.get('name')}: {item.get('price')}원" + 
+                  (f" (수량: {item.get('quantity')})" if item.get('quantity') else ""))
+    
+    # NLP 분석 결과 출력
+    if text_analytics_client and nlp_result.get("sentiment"):
+        print(f"NLP 분석 - 감정: {nlp_result.get('sentiment')}")
+        if nlp_result.get("key_phrases"):
+            print(f"NLP 분석 - 주요 키워드: {', '.join(nlp_result.get('key_phrases', [])[:5])}")
+    
     print(f"상태 코드: {status_code}")
     print("------------------------")
     
@@ -142,5 +208,12 @@ async def analyze_receipt(
         "date": parsed_data.get("normalized_date"),
         "status_code": status_code,
         "user_id": user_id,  # 디버깅용
-        "store_name": parsed_data.get("store_name")  # 추가 정보
+        "store_name": parsed_data.get("store_name"),  # 추가 정보
+        "items": parsed_data.get("items", []),  # 품목 리스트
+        "nlp_analysis": {  # NLP 분석 결과
+            "sentiment": nlp_result.get("sentiment"),
+            "key_phrases": nlp_result.get("key_phrases", [])[:10],  # 상위 10개만
+            "entities": nlp_result.get("entities", [])[:10],  # 상위 10개만
+            "insights": insights
+        } if text_analytics_client else None
     }

@@ -2,7 +2,7 @@
 영수증 텍스트에서 구조화된 정보를 추출하는 파서 모듈
 """
 import re
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 
 def extract_info(text: str, pattern: str, flags: int = 0) -> Optional[str]:
@@ -182,7 +182,38 @@ def extract_total_price(text: str) -> Optional[str]:
                 if total_price:
                     break
         
-        # "총 구 매 액" 같은 공백 많이 포함된 키워드 처리
+        # "총\n구\n매\n액" 같은 줄바꿈으로 분리된 경우 처리
+        if not total_price:
+            # "총", "구", "매", "액"이 연속된 줄에 있는지 확인
+            for i in range(len(lines) - 3):
+                line1 = lines[i].strip()
+                line2 = lines[i + 1].strip() if i + 1 < len(lines) else ""
+                line3 = lines[i + 2].strip() if i + 2 < len(lines) else ""
+                line4 = lines[i + 3].strip() if i + 3 < len(lines) else ""
+                
+                # "총", "구", "매", "액" 패턴 찾기
+                if (line1 == '총' or '총' in line1) and \
+                   (line2 == '구' or '구' in line2) and \
+                   (line3 == '매' or '매' in line3) and \
+                   (line4 == '액' or '액' in line4 or '액' in line3):
+                    # 다음 몇 줄에서 금액 찾기
+                    for j in range(i + 2, min(i + 6, len(lines))):
+                        amount_line = lines[j].strip()
+                        # 숫자만 있는 줄 또는 숫자+쉼표만 있는 줄 찾기
+                        amount_match = re.search(r'^[\d,\s]+$', amount_line)
+                        if amount_match:
+                            price_candidate = amount_line.replace(',', '').replace(' ', '')
+                            try:
+                                price_int = int(price_candidate)
+                                if 100 <= price_int <= 10000000000:
+                                    total_price = price_candidate
+                                    break
+                            except:
+                                pass
+                    if total_price:
+                        break
+        
+        # "총 구 매 액" 같은 공백 많이 포함된 키워드 처리 (한 줄에 있을 때)
         if not total_price:
             for i, line in enumerate(lines):
                 line_stripped = line.strip()
@@ -199,6 +230,57 @@ def extract_total_price(text: str) -> Optional[str]:
                                     break
                             except:
                                 pass
+        
+        # "결제금액", "결 제 금 액" 같은 줄바꿈 분리 패턴 처리
+        if not total_price:
+            payment_keywords = ['결제금액', '결 제 금 액', '결제 금액']
+            for i in range(len(lines) - 1):
+                line_stripped = lines[i].strip()
+                # "결", "제", "금", "액"이 연속된 줄에 있는지 확인
+                if i + 3 < len(lines):
+                    line1 = lines[i].strip()
+                    line2 = lines[i + 1].strip() if i + 1 < len(lines) else ""
+                    line3 = lines[i + 2].strip() if i + 2 < len(lines) else ""
+                    line4 = lines[i + 3].strip() if i + 3 < len(lines) else ""
+                    
+                    if (line1 == '결' or '결' in line1) and \
+                       (line2 == '제' or '제' in line2) and \
+                       (line3 == '금' or '금' in line3) and \
+                       (line4 == '액' or '액' in line4 or '액' in line3):
+                        for j in range(i + 2, min(i + 6, len(lines))):
+                            amount_line = lines[j].strip()
+                            amount_match = re.search(r'^[\d,\s]+$', amount_line)
+                            if amount_match:
+                                price_candidate = amount_line.replace(',', '').replace(' ', '')
+                                try:
+                                    price_int = int(price_candidate)
+                                    if 100 <= price_int <= 10000000000:
+                                        total_price = price_candidate
+                                        break
+                                except:
+                                    pass
+                        if total_price:
+                            break
+                
+                # 한 줄에 있을 때
+                for keyword in payment_keywords:
+                    if keyword in line_stripped:
+                        if i + 1 < len(lines):
+                            next_line = lines[i + 1].strip()
+                            match = re.search(r'([\d,\s]+)', next_line)
+                            if match:
+                                price_candidate = match.group(1).replace(',', '').replace(' ', '')
+                                try:
+                                    price_int = int(price_candidate)
+                                    if 100 <= price_int <= 10000000000:
+                                        total_price = price_candidate
+                                        break
+                                except:
+                                    pass
+                        if total_price:
+                            break
+                if total_price:
+                    break
         
         # 일반 키워드 검색
         if not total_price:
@@ -411,6 +493,214 @@ def extract_store_name(text: str) -> Optional[str]:
     return store_name
 
 
+def extract_items(text: str) -> List[Dict[str, Optional[str]]]:
+    """
+    영수증 텍스트에서 품목명과 개별 가격을 추출하는 함수
+    
+    Args:
+        text: OCR로 추출된 영수증 텍스트
+    
+    Returns:
+        품목 정보 리스트:
+        [
+            {"name": "품목명", "price": "가격", "quantity": "수량"},
+            ...
+        ]
+    """
+    items = []
+    lines = text.split('\n')
+    
+    # 제외할 키워드 (헤더, 합계 등)
+    exclude_keywords = [
+        '합계', '총구매액', '소계', '부가세', '할부', '일시불', '승인',
+        '거래일시', '카드번호', '상호명', '가맹점명', '주소', '전화',
+        '품목', '상품명', '금액', '단가', '수량', '계', '총', '합',
+        '총 구 매 액', '결제금액', '신용카드', '카드회사', '승인번호',
+        '과세물품가액', '증정', 'POS', 'TEL', '사업자등록번호'
+    ]
+    
+    # 지역명 (주소 필터링용)
+    region_keywords = [
+        '서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종',
+        '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주',
+        '용인', '성남', '수원', '안양', '안산', '고양', '부천', '의정부',
+        '시', '도', '구', '군', '읍', '면', '동', '로', '길', '번지'
+    ]
+    
+    # 금액 패턴 (숫자 + 원 또는 숫자만)
+    price_pattern = r'([\d,]+)\s*원?'
+    
+    # 여러 줄에 걸친 품목 패턴 처리 (품목명\n수량\n가격)
+    i = 0
+    while i < len(lines):
+        line_stripped = lines[i].strip()
+        
+        # 빈 줄이나 너무 짧은 줄 제외
+        if len(line_stripped) < 2:
+            i += 1
+            continue
+        
+        # 제외 키워드가 포함된 줄 제외
+        if any(keyword in line_stripped for keyword in exclude_keywords):
+            i += 1
+            continue
+        
+        # 품목명일 가능성이 있는 줄 (한글이나 영문 포함, 숫자만이 아님)
+        if re.search(r'[가-힣A-Za-z]', line_stripped) and not re.match(r'^[\d,\s원]+$', line_stripped):
+            # 다음 줄들이 수량과 가격일 수 있음
+            item_name = line_stripped
+            quantity = None
+            price = None
+            
+            # 다음 2-3줄 확인
+            for j in range(i + 1, min(i + 4, len(lines))):
+                next_line = lines[j].strip()
+                
+                # 수량 추출 (숫자만, 1-99 범위)
+                if not quantity and re.match(r'^\d{1,2}$', next_line):
+                    try:
+                        qty = int(next_line)
+                        if 1 <= qty <= 99:
+                            quantity = next_line
+                            continue
+                    except:
+                        pass
+                
+                # 가격 추출 (숫자 + 쉼표)
+                if not price:
+                    price_match = re.search(r'^([\d,]+)$', next_line)
+                    if price_match:
+                        price_str = price_match.group(1).replace(',', '')
+                        try:
+                            price_int = int(price_str)
+                            if 100 <= price_int <= 10000000:
+                                price = price_str
+                                # 수량과 가격을 찾았으면 다음 품목으로 이동
+                                i = j + 1
+                                break
+                        except:
+                            pass
+                
+                # "증정" 같은 키워드면 가격이 0
+                if '증정' in next_line or '무료' in next_line:
+                    price = "0"
+                    i = j + 1
+                    break
+                
+                # 다음 줄이 품목명처럼 보이면 현재 품목은 가격 없이 끝
+                if re.search(r'[가-힣A-Za-z]', next_line) and not re.match(r'^[\d,\s원]+$', next_line):
+                    if price:
+                        break
+                    else:
+                        # 가격 없이 품목만 추출하지 않음 (신뢰도 낮음)
+                        i += 1
+                        break
+            
+            # 품목명 필터링
+            is_address = any(region in item_name for region in region_keywords)
+            if is_address and ('로' in item_name or '길' in item_name or '동' in item_name or '구' in item_name):
+                i += 1
+                continue
+            
+            # 품목명과 가격이 모두 있으면 추가
+            if price and len(item_name) > 1:
+                items.append({
+                    "name": item_name,
+                    "price": price,
+                    "quantity": quantity
+                })
+            i += 1
+            continue
+        
+        # 기존 로직: 한 줄에 품목명과 가격이 함께 있는 경우
+        price_match = re.search(price_pattern, line_stripped)
+        if price_match:
+            price = price_match.group(1).replace(',', '').strip()
+            
+            # 금액이 너무 작거나 크면 제외 (헤더나 오류 가능성)
+            try:
+                price_int = int(price)
+                if price_int < 100 or price_int > 10000000:
+                    i += 1
+                    continue
+            except:
+                i += 1
+                continue
+            
+            # 품목명 추출 (금액 앞의 텍스트)
+            item_name = line_stripped[:price_match.start()].strip()
+            
+            # 품목명이 비어있거나 너무 짧으면 제외
+            if len(item_name) < 1:
+                i += 1
+                continue
+            
+            # 숫자만 있는 줄 제외 (금액 줄일 수 있음)
+            if re.match(r'^[\d,\s원]+$', item_name):
+                i += 1
+                continue
+            
+            # 주소 패턴 제외 (지역명 + 도로명이 포함된 경우)
+            is_address = any(region in item_name for region in region_keywords)
+            if is_address and ('로' in item_name or '길' in item_name or '동' in item_name or '구' in item_name):
+                i += 1
+                continue
+            
+            # 전화번호 패턴 제외 (TEL:, 전화: 등과 함께 숫자)
+            if re.search(r'(?:TEL|전화|tel|Tel)[\s:]*\d', line_stripped, re.IGNORECASE):
+                i += 1
+                continue
+            
+            # 사업자번호 패턴 제외
+            if re.search(r'사업자등록번호|사업자\s*번호', line_stripped):
+                i += 1
+                continue
+            
+            # 카드번호 패턴 제외
+            if re.search(r'카드번호|카드\s*번호', line_stripped):
+                i += 1
+                continue
+            
+            # 주소에 특수문자(괄호) 포함 시 제외
+            if '(' in item_name and any(region in item_name for region in region_keywords):
+                i += 1
+                continue
+            
+            # 수량 추출 시도 (품목명과 금액 사이에 숫자가 있는 경우)
+            quantity = None
+            name_price_part = item_name
+            quantity_match = re.search(r'(\d+)\s*(?:개|EA|ea|장|병|팩)', item_name)
+            if quantity_match:
+                quantity = quantity_match.group(1)
+                name_price_part = item_name[:quantity_match.start()].strip()
+            
+            # 최종 품목명 (수량 제거 후)
+            item_name_clean = name_price_part
+            
+            # 품목명이 비어있으면 다음 줄로
+            if len(item_name_clean) < 1:
+                i += 1
+                continue
+            
+            # 중복 체크 (같은 이름과 가격이면 제외)
+            is_duplicate = False
+            for existing_item in items:
+                if existing_item.get("name") == item_name_clean and existing_item.get("price") == price:
+                    is_duplicate = True
+                    break
+            
+            if not is_duplicate:
+                items.append({
+                    "name": item_name_clean,
+                    "price": price,
+                    "quantity": quantity
+                })
+        
+        i += 1
+    
+    return items
+
+
 def parse_receipt(text: str) -> Dict[str, Optional[str]]:
     """
     영수증 텍스트에서 구조화된 정보를 모두 추출하는 메인 함수
@@ -424,17 +714,20 @@ def parse_receipt(text: str) -> Dict[str, Optional[str]]:
             "total_price": 총 금액 (문자열),
             "purchase_date": 구매 날짜 (원본 형식),
             "normalized_date": 정규화된 날짜 (YYYY-MM-DD),
-            "store_name": 상호명
+            "store_name": 상호명,
+            "items": 품목 리스트 (리스트)
         }
     """
     total_price = extract_total_price(text)
     purchase_date = extract_purchase_date(text)
     normalized_date = normalize_date(purchase_date)
     store_name = extract_store_name(text)
+    items = extract_items(text)
     
     return {
         "total_price": total_price,
         "purchase_date": purchase_date,
         "normalized_date": normalized_date,
-        "store_name": store_name
+        "store_name": store_name,
+        "items": items
     }

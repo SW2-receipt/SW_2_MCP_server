@@ -18,7 +18,9 @@ FastAPI 서버: POST /analyze_receipt 엔드포인트 제공
 
 Azure AI 연동: Azure AI Vision API를 호출하여 이미지에서 텍스트 추출 (OCR)
 
-데이터 추출: 추출된 raw_text에서 정규 표현식(RegEx)을 사용해 금액, 날짜, 카테고리, 상호명 추출
+데이터 추출: 추출된 raw_text에서 정규 표현식(RegEx)을 사용해 금액, 날짜, 카테고리, 상호명, 품목 추출
+
+NLP 분석 (선택사항): Azure Text Analytics를 사용한 감정 분석, 키워드 추출, 엔티티 추출
 
 자동 문서화: http://127.0.0.1:8000/docs 를 통해 API 명세(Swagger) 자동 제공
 
@@ -27,6 +29,8 @@ Azure AI 연동: Azure AI Vision API를 호출하여 이미지에서 텍스트 �
 main.py: FastAPI 서버 로직 담당
 
 parser.py: OCR 텍스트 분석 및 정규식 로직 담당
+
+nlp_analyzer.py: Azure Text Analytics를 사용한 NLP 분석 로직 담당
 
 🚀 로컬에서 실행하는 방법
 
@@ -69,17 +73,28 @@ main.py 파일이 있는 최상위 폴더에 .env 라는 이름의 새 파일을
 
 (주의) .env 파일은 보안 파일이므로 절대 GitHub에 올리면 안 됩니다! (.gitignore 파일에 추가 필요)
 
-# Azure AI Vision 리소스의 키와 엔드포인트
+# Azure AI Vision 리소스의 키와 엔드포인트 (필수)
 AZURE_VISION_KEY="여기에_Azure_키_1_값을_붙여넣으세요"
 AZURE_VISION_ENDPOINT="여기에_Azure_엔드포인트_URL을_붙여넣으세요"
+
+# Azure Text Analytics 리소스의 키와 엔드포인트 (선택사항 - NLP 분석용)
+# NLP 분석 기능을 사용하려면 아래 값도 설정하세요
+AZURE_TEXT_ANALYTICS_KEY="여기에_Text_Analytics_키_값을_붙여넣으세요"
+AZURE_TEXT_ANALYTICS_ENDPOINT="여기에_Text_Analytics_엔드포인트_URL을_붙여넣으세요"
 
 
 5. 서버 실행
 
 모든 준비가 끝났습니다. 아래 명령어로 서버를 실행합니다.
 
-uvicorn main:app --reload
+**Windows 사용자 주의**: Python 3.13에서는 `--reload` 옵션으로 인해 오류가 발생할 수 있습니다.
+- 오류가 발생하면 `--reload` 없이 실행: `uvicorn main:app`
+- 정상 작동하면: `uvicorn main:app --reload`
 
+**Linux/Mac 사용자**:
+```bash
+uvicorn main:app --reload
+```
 
 서버가 성공적으로 켜지면, 터미널에 아래와 같은 메시지가 뜹니다.
 INFO: Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
