@@ -1,4 +1,5 @@
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 import shutil
 import os
 from dotenv import load_dotenv
@@ -27,6 +28,15 @@ except KeyError:
     exit()
 
 app = FastAPI()
+
+# CORS 설정 - UI에서 백엔드 API를 호출할 수 있도록 설정
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 개발 환경에서는 모든 출처 허용 (프로덕션에서는 특정 도메인 지정 권장)
+    allow_credentials=True,
+    allow_methods=["*"],  # 모든 HTTP 메서드 허용
+    allow_headers=["*"],  # 모든 헤더 허용
+)
 
 UPLOAD_DIR = "uploads"
 
