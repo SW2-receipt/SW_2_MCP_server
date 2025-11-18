@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>영수증 분석 테스트</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        input, button {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            box-sizing: border-box;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>영수증 분석 테스트</h1>
+    
+    <div>
+        <label>서버 주소:</label>
+        <input type="text" id="serverUrl" value="http://192.168.0.100:8000" placeholder="http://[PC의IP주소]:8000">
+    </div>
+    
+    <div>
+        <label>영수증 이미지:</label>
+        <input type="file" id="imageFile" accept="image/*">
+    </div>
+    
+    <div>
+        <label>사용자 ID (선택사항):</label>
+        <input type="text" id="userId" value="test_user">
+    </div>
+    
+    <button onclick="testConnection()">연결 테스트</button>
+    <button onclick="analyzeReceipt()">영수증 분석</button>
+    
+    <div id="result"></div>
+    
+    <script>
+        // PC의 IP 주소를 자동으로 감지하려면 여기를 수정하세요
+        const SERVER_URL = document.getElementById('serverUrl').value;
+        
+        async function testConnection() {
+            const url = document.getElementById('serverUrl').value;
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '연결 테스트 중...';
+            
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                resultDiv.innerHTML = `<strong>연결 성공!</strong><br>${JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                resultDiv.innerHTML = `<strong>연결 실패:</strong><br>${error.message}`;
+            }
+        }
+        
+        async function analyzeReceipt() {
+            const url = document.getElementById('serverUrl').value;
+            const fileInput = document.getElementById('imageFile');
+            const userId = document.getElementById('userId').value;
+            const resultDiv = document.getElementById('result');
+            
+            if (!fileInput.files[0]) {
+                alert('이미지를 선택해주세요');
+                return;
+            }
+            
+            resultDiv.innerHTML = '분석 중...';
+            
+            const formData = new FormData();
+            formData.append('image_file', fileInput.files[0]);
+            formData.append('user_id', userId || 'anonymous');
+            
+            try {
+                const response = await fetch(`${url}/analyze_receipt`, {
+                    method: 'POST',
+                    body: formData,
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                const data = await response.json();
+                resultDiv.innerHTML = `<strong>분석 완료!</strong><br><pre>${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                resultDiv.innerHTML = `<strong>분석 실패:</strong><br>${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>
+

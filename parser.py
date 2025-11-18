@@ -2,7 +2,111 @@
 영수증 텍스트에서 구조화된 정보를 추출하는 파서 모듈
 """
 import re
+from collections import defaultdict
 from typing import Optional, Dict, List
+
+try:
+    from konlpy.tag import Okt
+
+    _okt = Okt()
+    print("KoNLPy Okt 형태소 분석기를 사용하여 카테고리 분류를 강화합니다.")
+except Exception as e:  # pragma: no cover - 환경에 따라 실패 가능
+    _okt = None
+    print(f"⚠️ KoNLPy Okt 초기화 실패: {e}. 기본 키워드 기반 분류를 사용합니다.")
+
+
+CATEGORY_KEYWORDS = {
+    "교육": [
+        "학원",
+        "교습소",
+        "미술",
+        "음악",
+        "체육",
+        "영어",
+        "수학",
+        "교육",
+        "강의",
+        "레슨",
+        "학습",
+        "아트풀",
+    ],
+    "쇼핑": [
+        "롯데",
+        "백화점",
+        "보석",
+        "상품권",
+        "마트",
+        "편의점",
+        "마켓",
+        "슈퍼",
+        "쇼핑",
+        "하나로마트",
+        "리치몬트",
+        "까르띠에",
+    ],
+    "의료": [
+        "약국",
+        "병원",
+        "의원",
+        "치과",
+        "phampay",
+        "오팜페이",
+        "조제의약품",
+        "일반의약품",
+    ],
+    "교통": [
+        "주유",
+        "경유",
+        "디젤",
+        "주유소",
+        "주유금액",
+        "매출금액",
+        "nhvan",
+        "농협대전유통",
+        "고속도로",
+        "톨게이트",
+        "주차",
+    ],
+    "음식": [
+        "음식",
+        "식당",
+        "카페",
+        "레스토랑",
+        "초밥",
+        "회",
+        "맛집",
+        "치킨",
+        "피자",
+        "들밥",
+        "보리굴비",
+        "간장게장",
+        "주먹밥",
+        "교자",
+        "활어회",
+        "국민활어회초밥",
+        "짜장면",
+        "탕수육",
+        "커피",
+        "음료",
+        "빵",
+    ],
+}
+
+
+def _tokenize_for_category(text: str) -> List[str]:
+    tokens: List[str] = []
+    # 정규식 기반 기본 토큰화
+    tokens.extend(re.findall(r"[가-힣A-Za-z]+", text))
+
+    if _okt:
+        try:
+            tokens.extend(_okt.nouns(text))
+        except Exception as e:  # pragma: no cover - 환경 의존
+            print(f"⚠️ KoNLPy 분석 중 오류 발생: {e}")
+
+    # 소문자로 통일 (영문 대비)
+    normalized_tokens = [token.lower() for token in tokens if token]
+    return normalized_tokens
 
 
 def extract_info(text: str, pattern: str, flags: int = 0) -> Optional[str]:
@@ -71,34 +175,46 @@ def categorize_receipt(text: str, store_name: Optional[str]) -> str:
     Returns:
         카테고리 문자열 (우체국, 교육, 쇼핑, 의료, 교통, 음식, 기타)
     """
-    text_lower = text.lower()
-    combined_text = (text + " " + (store_name or "")).lower()
-    
-    # 우체국 관련 (기타로 분류) - 최우선
-    if any(keyword in combined_text for keyword in ['우체국', '우편', '등기', '택배', 'ems', 'epost', '취급국']):
+    combined_text = f"{text} {(store_name or '')}".lower()
+
+    # 우체국 및 택배 관련 키워드는 항상 기타로 분류
+    postal_keywords = ['우체국', '우편', '등기', '택배', 'ems', 'epost', '취급국']
+    if any(keyword in combined_text for keyword in postal_keywords):
         return "기타"
-    
-    # 교육 관련 (학원, 교습소 등) - 새 카테고리
-    if any(keyword in combined_text for keyword in ['학원', '교습소', '미술교습소', '미술', '음악', '체육', '영어', '수학', '교육', '강의', '레슨', '학습', '아트풀']):
+
+    tokens = _tokenize_for_category(combined_text)
+
+    # 빈 텍스트 방지
+    if not tokens:
+        tokens = []
+
+    scores = defaultdict(int)
+
+    for category, keywords in CATEGORY_KEYWORDS.items():
+        for keyword in keywords:
+            keyword_lower = keyword.lower()
+            if keyword_lower in combined_text:
+                scores[category] += 2
+            if keyword_lower in tokens:
+                scores[category] += 1
+
+    if scores:
+        best_category = max(scores.items(), key=lambda item: item[1])
+        if best_category[1] > 0:
+            return best_category[0]
+
+    # KoNLPy 기반 점수가 없으면 기본 키워드 규칙으로 보정
+    if any(keyword in combined_text for keyword in CATEGORY_KEYWORDS["교육"]):
         return "교육"
-    
-    # 쇼핑 관련 (롯데, 백화점 등 우선 체크) - 음식보다 먼저!
-    if any(keyword in combined_text for keyword in ['롯데', '리치몬트', '백화점', '보석세트', '보석', '까르띠에', '상품권', '롯데상품권', '마트', '편의점', '마켓', '슈퍼', '쇼핑', '하나로마트']):
+    if any(keyword in combined_text for keyword in CATEGORY_KEYWORDS["쇼핑"]):
         return "쇼핑"
-    
-    # 의료 관련 키워드 (약국, 병원 등)
-    if any(keyword in combined_text for keyword in ['약국', '병원', '의원', '치과', '오팜페이', 'phampay', '남시약국', '조제의약품', '일반의약품']):
+    if any(keyword in combined_text for keyword in CATEGORY_KEYWORDS["의료"]):
         return "의료"
-    
-    # 교통 관련 (주유소 등) - 우선순위 높임
-    if any(keyword in combined_text for keyword in ['주유', '경유', '디젤', '주유소', '주유금액', '농협대전유통', '매출금액', 'NHVAN']):
+    if any(keyword in combined_text for keyword in CATEGORY_KEYWORDS["교통"]):
         return "교통"
-    
-    # 음식 관련 키워드
-    if any(keyword in combined_text for keyword in ['음식', '식당', '카페', '레스토랑', '초밥', '회', '맛집', '치킨', '피자', '들밥', '보리굴비', '간장게장', '진라면', '주먹밥', '교자', '활어회', '국민활어회초밥']):
+    if any(keyword in combined_text for keyword in CATEGORY_KEYWORDS["음식"]):
         return "음식"
-    
-    # 기타
+
     return "기타"
 
 
@@ -388,7 +504,6 @@ def extract_store_name(text: str) -> Optional[str]:
                     exclude_words = ['수량', '금액', '단가', '상품명', '제약사', '거래일시', '조제의약품', '일반의약품', '합계']
                     if candidate not in exclude_words:
                         store_name = candidate
-                        print(f"[DEBUG] '상호명 / 이름' 패턴으로 상호명 찾음: {store_name}")
                         break
     
     # 2. "주소" 기반으로 찾기 (1번에서 못 찾은 경우)
@@ -409,17 +524,13 @@ def extract_store_name(text: str) -> Optional[str]:
                            any(unit in line_stripped for unit in address_keywords_unit)))
             
             if is_address:
-                print(f"[DEBUG] 주소 발견 (Line {i}): {line_stripped}")
-                
                 # 주소 위쪽 몇 줄에서 상호명 찾기 (우선)
                 for j in range(max(0, i - 5), i):
                     prev_line = lines[j].strip()
-                    print(f"[DEBUG] 위쪽 줄 (Line {j}): {prev_line}")
                     
                     # "(주)..." 패턴 먼저 확인
                     if prev_line.startswith('(주)'):
                         store_name = prev_line
-                        print(f"[DEBUG] '(주)' 패턴으로 상호명 찾음 (주소 위): {store_name}")
                         break
                     
                     # 한글이 포함된 상호명만 선택
@@ -428,7 +539,6 @@ def extract_store_name(text: str) -> Optional[str]:
                                         '이성문', '서울', '부산', '강서구', '수', '영', '팜', '페이', 'www']
                         if prev_line not in exclude_words and '팜' not in prev_line and '페이' not in prev_line:
                             store_name = prev_line
-                            print(f"[DEBUG] 상호명 찾음 (주소 위): {store_name}")
                             break
                 if store_name:
                     break
@@ -436,7 +546,6 @@ def extract_store_name(text: str) -> Optional[str]:
                 # 주소 다음 줄도 확인
                 if i + 1 < len(lines):
                     next_line = lines[i + 1].strip()
-                    print(f"[DEBUG] 다음 줄 (Line {i+1}): {next_line}")
                     
                     # 다음 줄이 "대표:", "전화:" 등이 아닌 경우만 확인
                     if not ('대표' in next_line or '전화' in next_line or '사업자번호' in next_line):
@@ -446,7 +555,6 @@ def extract_store_name(text: str) -> Optional[str]:
                                             '이성문', '서울', '부산', '강서구', '팜', '페이']
                             if next_line not in exclude_words and '팜' not in next_line and '페이' not in next_line:
                                 store_name = next_line
-                                print(f"[DEBUG] 상호명 찾음 (주소 아래): {store_name}")
                                 break
     
     # 3. "상호명:" 또는 "가맹점명:" 패턴 시도
@@ -455,7 +563,6 @@ def extract_store_name(text: str) -> Optional[str]:
         store_name_match = re.search(store_pattern, text, re.IGNORECASE)
         if store_name_match:
             store_name = store_name_match.group(1).strip()
-            print(f"[DEBUG] '상호명/가맹점명:' 패턴으로 상호명 찾음: {store_name}")
     
     # 4. "(주)..." 패턴 시도 (주소 기반 검색에서 못 찾은 경우)
     if not store_name:
@@ -466,7 +573,6 @@ def extract_store_name(text: str) -> Optional[str]:
             extracted = store_name_match.group(1).strip()
             if len(extracted) >= 2:
                 store_name = "(주)" + extracted
-                print(f"[DEBUG] '(주)...' 패턴으로 상호명 찾음: {store_name}")
     
     # 5. 상단 10줄에서 순수 한글 상호명 찾기 (약국 영수증 등) - "팜 페이" 제외
     if not store_name:
@@ -480,7 +586,6 @@ def extract_store_name(text: str) -> Optional[str]:
                 # "팜", "페이"가 포함된 줄 제외
                 if line_stripped not in exclude_words and '팜' not in line_stripped and '페이' not in line_stripped:
                     store_name = line_stripped
-                    print(f"[DEBUG] 상단 줄에서 상호명 찾음 (Line {i}): {store_name}")
                     break
     
     # 상호명이 추출되지 않았을 경우 디버깅 정보 출력
@@ -512,10 +617,10 @@ def extract_items(text: str) -> List[Dict[str, Optional[str]]]:
     
     # 제외할 키워드 (헤더, 합계 등)
     exclude_keywords = [
-        '합계', '총구매액', '소계', '부가세', '할부', '일시불', '승인',
+        '합계', '총구매액', '소계', '부가세', '부 가', '부 가 세', '할부', '일시불', '승인',
         '거래일시', '카드번호', '상호명', '가맹점명', '주소', '전화',
         '품목', '상품명', '금액', '단가', '수량', '계', '총', '합',
-        '총 구 매 액', '결제금액', '신용카드', '카드회사', '승인번호',
+        '총 구 매 액', '결제금액', '신용카드', '신 용 카 드', '카드회사', '승인번호',
         '과세물품가액', '증정', 'POS', 'TEL', '사업자등록번호'
     ]
     
@@ -527,8 +632,10 @@ def extract_items(text: str) -> List[Dict[str, Optional[str]]]:
         '시', '도', '구', '군', '읍', '면', '동', '로', '길', '번지'
     ]
     
-    # 금액 패턴 (숫자 + 원 또는 숫자만)
+    # 금액 패턴 (숫자 + 원 또는 숫자만) - 개선: 더 유연한 패턴
     price_pattern = r'([\d,]+)\s*원?'
+    # 한 줄에서 품목명과 가격을 분리하기 위한 패턴 (품목명 뒤의 숫자)
+    price_pattern_inline = r'([\d,]+)\s*(?:원|$|\n)'
     
     # 여러 줄에 걸친 품목 패턴 처리 (품목명\n수량\n가격)
     i = 0
@@ -546,14 +653,33 @@ def extract_items(text: str) -> List[Dict[str, Optional[str]]]:
             continue
         
         # 품목명일 가능성이 있는 줄 (한글이나 영문 포함, 숫자만이 아님)
-        if re.search(r'[가-힣A-Za-z]', line_stripped) and not re.match(r'^[\d,\s원]+$', line_stripped):
+        # 단, 한 줄에 큰 가격이 포함되어 있으면 한 줄 패턴으로 처리해야 하므로 제외
+        # 예: "품목명 3,500원" 같은 경우는 한 줄 패턴으로 처리
+        # 단, "연세)복숭아요거트 300" 같은 경우는 작은 숫자(품목명 일부일 수 있음)이므로 여러 줄 패턴으로 처리
+        has_price_inline = False
+        if re.search(r'[\d,]+', line_stripped):
+            # 끝에 큰 금액(1000원 이상)이 있으면 한 줄 패턴
+            # 1000원 미만이면 품목명 일부일 가능성이 높음
+            price_at_end = re.search(r'\s+([\d,]+)\s*원?\s*$', line_stripped)
+            if price_at_end:
+                try:
+                    price_val = int(price_at_end.group(1).replace(',', '').replace(' ', ''))
+                    if price_val >= 1000:  # 1000원 이상이면 가격으로 간주
+                        has_price_inline = True
+                except:
+                    pass
+        
+        # 여러 줄 패턴으로 처리할지 결정
+        # 품목명에 작은 숫자(1000원 미만)가 포함되어 있으면 여러 줄 패턴으로 처리
+        # 또는 숫자가 없어도 여러 줄 패턴일 수 있음 (예: "연세스트로베리요거트\n1\n2,500")
+        if re.search(r'[가-힣A-Za-z]', line_stripped) and not re.match(r'^[\d,\s원]+$', line_stripped) and not has_price_inline:
             # 다음 줄들이 수량과 가격일 수 있음
             item_name = line_stripped
             quantity = None
             price = None
             
-            # 다음 2-3줄 확인
-            for j in range(i + 1, min(i + 4, len(lines))):
+            # 다음 2-5줄 확인 (더 많이 확인)
+            for j in range(i + 1, min(i + 6, len(lines))):
                 next_line = lines[j].strip()
                 
                 # 수량 추출 (숫자만, 1-99 범위)
@@ -566,17 +692,23 @@ def extract_items(text: str) -> List[Dict[str, Optional[str]]]:
                     except:
                         pass
                 
-                # 가격 추출 (숫자 + 쉼표)
+                # 가격 추출 (숫자 + 쉼표, "원" 포함 가능, 공백 허용)
                 if not price:
-                    price_match = re.search(r'^([\d,]+)$', next_line)
+                    # 패턴 1: 숫자만 있는 줄 (예: "3,500" 또는 "3500" 또는 "3, 500" - 공백 포함)
+                    price_match = re.search(r'^([\d,\s]+)$', next_line)
+                    if not price_match:
+                        # 패턴 2: 숫자 + "원" (예: "3,500원" 또는 "3500원" 또는 "3, 500원")
+                        price_match = re.search(r'^([\d,\s]+)\s*원', next_line)
                     if price_match:
-                        price_str = price_match.group(1).replace(',', '')
+                        # 공백 제거 후 쉼표 제거
+                        price_str = price_match.group(1).replace(' ', '').replace(',', '')
                         try:
                             price_int = int(price_str)
                             if 100 <= price_int <= 10000000:
                                 price = price_str
+                                print(f"[품목 추출] {item_name} - {price}원 (수량: {quantity or 1})")
                                 # 수량과 가격을 찾았으면 다음 품목으로 이동
-                                i = j + 1
+                                i = j + 1  # 가격 줄 다음부터 시작
                                 break
                         except:
                             pass
@@ -587,12 +719,67 @@ def extract_items(text: str) -> List[Dict[str, Optional[str]]]:
                     i = j + 1
                     break
                 
-                # 다음 줄이 품목명처럼 보이면 현재 품목은 가격 없이 끝
+                # 다음 줄이 품목명처럼 보이면
                 if re.search(r'[가-힣A-Za-z]', next_line) and not re.match(r'^[\d,\s원]+$', next_line):
+                    # 가격을 이미 찾았으면 다음 품목으로 넘어감
                     if price:
                         break
                     else:
-                        # 가격 없이 품목만 추출하지 않음 (신뢰도 낮음)
+                        # 가격을 찾지 못했지만 다음 품목이 나왔으므로, 한 줄 더 확인
+                        # 예: "연세스트로베리요거트\n1\n2,500" 같은 경우
+                        # 다음 다음 줄이 가격일 수 있음 (수량이 있을 수도 있음)
+                        found_price_ahead = False
+                        for k in range(j + 1, min(j + 4, len(lines))):
+                            check_line = lines[k].strip()
+                            # 빈 줄이면 건너뛰기
+                            if not check_line:
+                                continue
+                            # 수량인지 확인
+                            if not quantity and re.match(r'^\d{1,2}$', check_line):
+                                try:
+                                    qty_val = int(check_line)
+                                    if 1 <= qty_val <= 99:
+                                        quantity = check_line
+                                        continue  # 수량이면 다음 줄 확인
+                                except:
+                                    pass
+                            # 가격인지 확인
+                            price_match_next = re.search(r'^([\d,\s]+)$', check_line)
+                            if price_match_next:
+                                price_str_next = price_match_next.group(1).replace(' ', '').replace(',', '')
+                                try:
+                                    price_int_next = int(price_str_next)
+                                    if 100 <= price_int_next <= 10000000:
+                                        # 가격을 찾았으므로 현재 품목에 추가하고 다음 품목으로
+                                        price = price_str_next
+                                        print(f"[품목 추출] {item_name} - {price}원 (수량: {quantity or 1}) [지연 추출]")
+                                        i = k + 1  # 가격 줄 다음부터 시작
+                                        found_price_ahead = True
+                                        break
+                                except:
+                                    pass
+                            # 다음 품목명이 나오면 중단 (단, 가격을 찾지 못했을 때만)
+                            if not price and re.search(r'[가-힣A-Za-z]', check_line) and not re.match(r'^[\d,\s원]+$', check_line):
+                                # 한 줄 더 확인 (수량이 있을 수 있음)
+                                if k + 1 < len(lines):
+                                    next_check = lines[k + 1].strip()
+                                    price_match_final = re.search(r'^([\d,\s]+)$', next_check)
+                                    if price_match_final:
+                                        price_str_final = price_match_final.group(1).replace(' ', '').replace(',', '')
+                                        try:
+                                            price_int_final = int(price_str_final)
+                                            if 100 <= price_int_final <= 10000000:
+                                                price = price_str_final
+                                                print(f"[품목 추출] {item_name} - {price}원 (수량: {quantity or 1}) [지연 추출]")
+                                                i = k + 2  # 가격 줄 다음부터 시작
+                                                found_price_ahead = True
+                                                break
+                                        except:
+                                            pass
+                                break
+                        if found_price_ahead:
+                            break
+                        # 가격을 찾지 못했으면 현재 품목은 건너뜀
                         i += 1
                         break
             
@@ -602,6 +789,10 @@ def extract_items(text: str) -> List[Dict[str, Optional[str]]]:
                 i += 1
                 continue
             
+            # 품목명 끝에 붙은 숫자 제거 (예: "WOW새우진짬뽕0" -> "WOW새우진짬뽕")
+            if item_name and re.search(r'[가-힣A-Za-z]', item_name):
+                item_name = re.sub(r'(\d+)$', '', item_name).strip()
+            
             # 품목명과 가격이 모두 있으면 추가
             if price and len(item_name) > 1:
                 items.append({
@@ -609,18 +800,36 @@ def extract_items(text: str) -> List[Dict[str, Optional[str]]]:
                     "price": price,
                     "quantity": quantity
                 })
+                print(f"[품목 추출] {item_name} - {price}원 (수량: {quantity or 1})")
+            # 가격을 찾지 못했으면 i만 증가 (다음 줄로)
             i += 1
             continue
         
         # 기존 로직: 한 줄에 품목명과 가격이 함께 있는 경우
-        price_match = re.search(price_pattern, line_stripped)
+        # 패턴 개선: "품목명 3,500원" 또는 "품목명 3500" 또는 "품목명 3, 500" 형식
+        # 오른쪽 끝에서 가격 찾기 (품목명 뒤의 마지막 숫자 패턴)
+        # 단, 작은 숫자(1000원 미만)는 품목명 일부일 수 있으므로 제외
+        price_match = None
+        # 패턴 1: 끝에 "원"이 있는 경우 (공백 포함 가능: "3, 500원")
+        price_match = re.search(r'([\d,\s]+)\s*원\s*$', line_stripped)
+        if not price_match:
+            # 패턴 2: 끝에 숫자만 있는 경우 (공백으로 구분, 공백 포함 가능: "3, 500")
+            price_match = re.search(r'\s+([\d,\s]+)\s*$', line_stripped)
+        if not price_match:
+            # 패턴 3: 기존 패턴 (어디든 숫자, 공백 포함 가능)
+            price_match = re.search(r'([\d,\s]+)\s*원?', line_stripped)
+        
         if price_match:
-            price = price_match.group(1).replace(',', '').strip()
+            # 공백 제거 후 쉼표 제거
+            price = price_match.group(1).replace(' ', '').replace(',', '').strip()
             
             # 금액이 너무 작거나 크면 제외 (헤더나 오류 가능성)
+            # 1000원 미만이면 품목명 일부일 가능성이 높으므로 여러 줄 패턴으로 처리해야 함
             try:
                 price_int = int(price)
-                if price_int < 100 or price_int > 10000000:
+                if price_int < 1000 or price_int > 10000000:
+                    # 숫자만 있는 줄이면 여러 줄 패턴의 가격일 수 있으므로 건너뛰기
+                    # 예: "2,500" 같은 경우는 앞의 품목명과 연결되어야 함
                     i += 1
                     continue
             except:
@@ -630,6 +839,22 @@ def extract_items(text: str) -> List[Dict[str, Optional[str]]]:
             # 품목명 추출 (금액 앞의 텍스트)
             item_name = line_stripped[:price_match.start()].strip()
             
+            # 품목명이 비어있으면 여러 줄 패턴의 가격일 수 있음
+            # 예: "2,500" 같은 경우는 앞의 품목명과 연결되어야 함
+            if len(item_name) < 1:
+                i += 1
+                continue
+            
+            # 품목명 끝에 작은 숫자 제거 (예: "연세)복숭아요거트 300" -> "연세)복숭아요거트")
+            # 단, 숫자가 1000 이상이면 가격일 수 있으므로 제거하지 않음
+            if item_name:
+                # 끝에 붙은 작은 숫자(1000 미만) 제거
+                small_num_match = re.search(r'\s+(\d{1,3})\s*$', item_name)
+                if small_num_match:
+                    num_val = int(small_num_match.group(1))
+                    if num_val < 1000:  # 1000 미만이면 품목명 일부로 간주하고 제거
+                        item_name = item_name[:small_num_match.start()].strip()
+            
             # 품목명이 비어있거나 너무 짧으면 제외
             if len(item_name) < 1:
                 i += 1
@@ -637,6 +862,13 @@ def extract_items(text: str) -> List[Dict[str, Optional[str]]]:
             
             # 숫자만 있는 줄 제외 (금액 줄일 수 있음)
             if re.match(r'^[\d,\s원]+$', item_name):
+                # 숫자만 있는 줄이면 품목명이 없으므로 여러 줄 패턴으로 처리해야 할 수도 있음
+                # 하지만 이미 한 줄 패턴으로 처리했으므로 건너뜀
+                i += 1
+                continue
+            
+            # 제외 키워드가 포함된 줄 제외 (한 줄 패턴에서도)
+            if any(keyword in item_name for keyword in exclude_keywords):
                 i += 1
                 continue
             
@@ -677,6 +909,12 @@ def extract_items(text: str) -> List[Dict[str, Optional[str]]]:
             # 최종 품목명 (수량 제거 후)
             item_name_clean = name_price_part
             
+            # 품목명 끝에 붙은 숫자 제거 (예: "WOW새우진짬뽕0" -> "WOW새우진짬뽕")
+            # 단, 품목명이 숫자로 끝나는 경우에만 제거 (한글/영문이 포함된 경우)
+            if re.search(r'[가-힣A-Za-z]', item_name_clean):
+                # 끝에 붙은 숫자 패턴 제거 (예: "품목명0", "품목명123" 등)
+                item_name_clean = re.sub(r'(\d+)$', '', item_name_clean).strip()
+            
             # 품목명이 비어있으면 다음 줄로
             if len(item_name_clean) < 1:
                 i += 1
@@ -695,9 +933,11 @@ def extract_items(text: str) -> List[Dict[str, Optional[str]]]:
                     "price": price,
                     "quantity": quantity
                 })
+                print(f"[품목 추출] {item_name_clean} - {price}원 (수량: {quantity or 1})")
         
         i += 1
     
+    print(f"[품목 추출 완료] 총 {len(items)}개 품목")
     return items
 
 
