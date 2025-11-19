@@ -1,18 +1,53 @@
 """
 영수증 텍스트에서 구조화된 정보를 추출하는 파서 모듈
 """
+import logging
 import re
 from collections import defaultdict
 from typing import Optional, Dict, List
+
+logger = logging.getLogger(__name__)
 
 try:
     from konlpy.tag import Okt
 
     _okt = Okt()
-    print("KoNLPy Okt 형태소 분석기를 사용하여 카테고리 분류를 강화합니다.")
+    logger.info("KoNLPy Okt 형태소 분석기를 사용하여 카테고리 분류를 강화합니다.")
 except Exception as e:  # pragma: no cover - 환경에 따라 실패 가능
     _okt = None
-    print(f"⚠️ KoNLPy Okt 초기화 실패: {e}. 기본 키워드 기반 분류를 사용합니다.")
+    error_text = str(e).lower()
+    if "java" in error_text or "jvm" in error_text:
+        guidance = "Java(JDK) 미설치 또는 JAVA_HOME 미설정으로 인해 KoNLPy Okt 로딩에 실패했습니다."
+    else:
+        guidance = "KoNLPy 또는 JPype1 설치가 누락되었습니다. `pip install konlpy JPype1` 후 다시 시도하세요."
+    logger.warning("⚠️ KoNLPy Okt 초기화 실패: %s", e)
+    logger.warning("%s 기본 키워드 기반 분류로 대체합니다.", guidance)
+
+
+STOPWORDS = {
+    "영수증",
+    "영수",
+    "증",
+    "합계",
+    "총구매",
+    "총",
+    "구매",
+    "매출",
+    "카드",
+    "금액",
+    "결제",
+    "요금",
+    "수납",
+    "신용",
+    "현금",
+    "고객",
+    "번호",
+    "승인",
+    "거래",
+    "일시",
+    "청구",
+    "영업",
+}
 
 
 CATEGORY_KEYWORDS = {
@@ -43,6 +78,18 @@ CATEGORY_KEYWORDS = {
         "하나로마트",
         "리치몬트",
         "까르띠에",
+        # 편의점 브랜드 추가
+        "CU",
+        "cu",
+        "GS25",
+        "gs25",
+        "세븐일레븐",
+        "7-ELEVEN",
+        "7eleven",
+        "이마트24",
+        "미니스톱",
+        "세븐",
+        "편의",
     ],
     "의료": [
         "약국",
@@ -102,10 +149,14 @@ def _tokenize_for_category(text: str) -> List[str]:
         try:
             tokens.extend(_okt.nouns(text))
         except Exception as e:  # pragma: no cover - 환경 의존
-            print(f"⚠️ KoNLPy 분석 중 오류 발생: {e}")
+            logger.warning("⚠️ KoNLPy 분석 중 오류 발생: %s", e)
 
     # 소문자로 통일 (영문 대비)
-    normalized_tokens = [token.lower() for token in tokens if token]
+    normalized_tokens = [
+        token.lower()
+        for token in tokens
+        if token and token.lower() not in STOPWORDS
+    ]
     return normalized_tokens
 
 
@@ -182,25 +233,51 @@ def categorize_receipt(text: str, store_name: Optional[str]) -> str:
     if any(keyword in combined_text for keyword in postal_keywords):
         return "기타"
 
-    tokens = _tokenize_for_category(combined_text)
-
-    # 빈 텍스트 방지
-    if not tokens:
-        tokens = []
+    text_tokens = _tokenize_for_category(text)
+    store_tokens = _tokenize_for_category(store_name or "")
 
     scores = defaultdict(int)
 
+    # 1단계: 상호명 기반 분류 (가중치 3점)
+    # 상호명에서 브랜드명 직접 매칭 (예: "CU 용인마평점" → "CU" 인식)
+    if store_name:
+        store_name_lower = store_name.lower()
+        for category, keywords in CATEGORY_KEYWORDS.items():
+            for keyword in keywords:
+                keyword_lower = keyword.lower()
+                # 상호명에 키워드가 포함되어 있으면 높은 가중치
+                if keyword_lower in store_name_lower:
+                    scores[category] += 3
+                    logger.debug(f"상호명 매칭: {keyword} → {category} (+3점)")
+
+    # 2단계: 본문 및 토큰 기반 분류 (가중치 1점)
     for category, keywords in CATEGORY_KEYWORDS.items():
         for keyword in keywords:
             keyword_lower = keyword.lower()
-            if keyword_lower in combined_text:
-                scores[category] += 2
-            if keyword_lower in tokens:
+            if keyword_lower in text_tokens:
                 scores[category] += 1
+            if keyword_lower in store_tokens:
+                scores[category] += 3
+
+    # 3단계: 품목명 기반 힌트 (가중치 0.5점)
+    # 품목명에서 음식 관련 키워드가 많이 나오면 "음식" 힌트
+    # 하지만 매장이 "편의점"이면 최종적으로 "쇼핑"으로 분류
+    item_hints = {
+        "음식": ["치킨", "피자", "햄버거", "라면", "김밥", "도시락", "샌드위치", 
+                "새우", "짬뽕", "요거트", "우유", "빵", "과자", "음료", "커피"],
+        "의료": ["약", "비타민", "영양제", "건강식품"],
+    }
+    
+    # 편의점 브랜드가 감지되면 "쇼핑" 카테고리에 보너스 점수
+    convenience_store_brands = ["cu", "gs25", "세븐일레븐", "7-eleven", "이마트24", "미니스톱"]
+    if store_name and any(brand in store_name.lower() for brand in convenience_store_brands):
+        scores["쇼핑"] += 2
+        logger.debug(f"편의점 브랜드 감지: {store_name} → 쇼핑 (+2점)")
 
     if scores:
         best_category = max(scores.items(), key=lambda item: item[1])
         if best_category[1] > 0:
+            logger.debug(f"최종 카테고리: {best_category[0]} (점수: {best_category[1]})")
             return best_category[0]
 
     # KoNLPy 기반 점수가 없으면 기본 키워드 규칙으로 보정

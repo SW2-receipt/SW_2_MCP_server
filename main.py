@@ -140,6 +140,37 @@ def test_connection():
         "server": "Receipt AI Analyzer"
     }
 
+@app.get("/status/konlpy")
+def check_konlpy_status():
+    """KoNLPy 상태 확인 엔드포인트"""
+    from parser import _okt, STOPWORDS
+    
+    is_active = _okt is not None
+    test_result = None
+    
+    if is_active:
+        try:
+            # 테스트 문장으로 형태소 분석 수행
+            test_text = "롯데백화점에서 치킨을 구매했습니다"
+            nouns = _okt.nouns(test_text)
+            test_result = {
+                "test_text": test_text,
+                "extracted_nouns": nouns,
+                "status": "working"
+            }
+        except Exception as e:
+            test_result = {
+                "status": "error",
+                "error": str(e)
+            }
+    
+    return {
+        "konlpy_active": is_active,
+        "stopwords_count": len(STOPWORDS),
+        "test_result": test_result,
+        "message": "KoNLPy Okt가 활성화되어 있습니다." if is_active else "KoNLPy Okt가 비활성화되어 있습니다. 기본 키워드 기반 분류를 사용합니다."
+    }
+
 
 @app.get("/receipts/{user_id}")
 def get_user_receipts(user_id: str, limit: int = 100):
