@@ -10,6 +10,7 @@ echo 중지하려면 Ctrl+C를 누르세요.
 echo ========================================
 echo.
 
+call venv\Scripts\activate.bat
 uvicorn main:app --host 0.0.0.0 --port 8000
 
 pause
