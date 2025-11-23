@@ -85,7 +85,22 @@ AZURE_TEXT_ANALYTICS_ENDPOINT="여기에_Text_Analytics_엔드포인트_URL을_�
 
 5. 서버 실행
 
-모든 준비가 끝났습니다. 아래 명령어로 서버를 실행합니다.
+모든 준비가 끝났습니다. 아래 방법 중 하나를 선택하여 서버를 실행합니다.
+
+**방법 1: 스크립트 사용 (권장)**
+
+- **Windows**: `start_server.bat` 더블클릭 또는 명령어 실행
+  ```cmd
+  start_server.bat
+  ```
+
+- **Linux/Mac**: 스크립트에 실행 권한 부여 후 실행
+  ```bash
+  chmod +x start_server.sh
+  ./start_server.sh
+  ```
+
+**방법 2: 직접 명령어 실행**
 
 **Windows 사용자 주의**: Python 3.13에서는 `--reload` 옵션으로 인해 오류가 발생할 수 있습니다.
 - 오류가 발생하면 `--reload` 없이 실행: `uvicorn main:app`
@@ -122,3 +137,17 @@ user_id 칸에는 "test_user" 처럼 임의의 ID를 입력합니다.
 🐞 현재 상태 (v1.0)
 
 [작동] 금액(amount), 날짜(date), 카테고리(category)가 테스트한 영수증 10개(구글에서 찾음)에서 잘 추출됩니다.
+
+📦 Smithery 배포
+
+이 프로젝트는 Smithery 플랫폼에 배포할 수 있습니다.
+
+**배포 전 확인사항:**
+- `.env` 파일은 Git에 포함되지 않습니다 (보안)
+- `start_server.bat` (Windows)와 `start_server.sh` (Linux/Mac) 스크립트가 포함되어 있습니다
+- `requirements.txt`에 모든 의존성이 명시되어 있습니다
+
+**배포 시 주의사항:**
+- Smithery 환경에서는 환경 변수를 플랫폼 설정에서 구성해야 합니다
+- Azure API 키는 Smithery의 환경 변수 설정에서 추가하세요
+- 데이터베이스 연결 정보도 환경 변수로 설정해야 합니다

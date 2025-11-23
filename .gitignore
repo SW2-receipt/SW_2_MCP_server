@@ -11,3 +11,17 @@ venv/
 
 # 보안: API 키 파일 무시
 .env
+
+# Java 에러 로그 파일
+hs_err_pid*.log
+
+# IDE 설정 파일
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS 파일
+.DS_Store
+Thumbs.db
