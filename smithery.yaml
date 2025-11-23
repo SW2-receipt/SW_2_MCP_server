@@ -1,16 +1,3 @@
 startCommand: uvicorn main:app --host 0.0.0.0 --port 8000
 build:
   dockerfile: Dockerfile
-env:
-  AZURE_VISION_KEY:
-    description: "Azure AI Vision Key"
-    required: true
-  AZURE_VISION_ENDPOINT:
-    description: "Azure AI Vision Endpoint"
-    required: true
-  AZURE_TEXT_ANALYTICS_KEY:
-    description: "Azure Text Analytics Key"
-    required: false
-  AZURE_TEXT_ANALYTICS_ENDPOINT:
-    description: "Azure Text Analytics Endpoint"
-    required: false
