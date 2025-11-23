@@ -1,12 +1,11 @@
 startCommand:
-  type: "stdio"
-  command: "uvicorn"
+  type: stdio
+  command: python
   args:
-    - "main:app"
-    - "--host"
-    - "0.0.0.0"
-    - "--port"
-    - "8000"
-build:
-  dockerfile: "Dockerfile"
-  context: "."
+    - -m
+    - uvicorn
+    - main:app
+    - --host
+    - 0.0.0.0
+    - --port
+    - 8000
