@@ -1,7 +1,5 @@
 🧾 Receipt-AI-Analyzer-MCP (v1.0)
 
-담당자: 이현규
-
 역할: FastAPI 백엔드 API 개발 (Azure AI 연동 및 데이터 추출)
 
 📌 프로젝트 개요
