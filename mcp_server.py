@@ -9,14 +9,12 @@ def analyze_receipt(image_url: str) -> str:
     return f"이미지({image_url}) 분석 요청 받음 (성공)"
 
 def main():
-    # 기본값은 8000 (Smithery, 로컬용)
-    port = 8000
+    # 문제 해결의 핵심:
+    # Render든 Smithery든 로컬이든, 환경변수 'PORT'가 있으면 무조건 그걸 씁니다.
+    # 없으면(로컬 개발 등) 8000을 씁니다.
+    port = int(os.environ.get("PORT", 8000))
     
-    # 만약 'RENDER'라는 환경변수가 있다면, Render가 주는 포트를 씁니다.
-    if os.environ.get("RENDER"):
-        port = int(os.environ.get("PORT", 10000))
-    
-    # 그 외(Smithery)에는 무조건 8000번으로 고정하여 설정 파일과 맞춥니다.
+    # 0.0.0.0으로 열어서 외부 접속을 허용하고, 위에서 정한 포트를 사용합니다.
     uvicorn.run(mcp.sse_app, host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
