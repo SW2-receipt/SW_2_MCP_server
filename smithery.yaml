@@ -1,13 +1,14 @@
 # smithery.yaml
 
-# 스미더리 규칙상 이 부분이 꼭 있어야 통과됩니다. (실제 배포는 Dockerfile로 됨)
 startCommand:
-  type: stdio
+  # 중요: 우린 웹 서버를 띄우니까 http라고 해야 합니다.
+  type: http
   command: python
   args:
     - mcp_server.py
+  # 서버가 켜지면 어디로 연결할지 알려줍니다.
+  url: http://localhost:8000/sse
 
-# 여기가 스미더리 웹 배포를 위한 핵심 설정입니다.
 mcpServers:
   sw2-receipt:
     url: http://localhost:8000/sse
