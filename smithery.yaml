@@ -1,8 +1,8 @@
-runtime: "container"
-build:
-  dockerfile: "Dockerfile.mcp"
-  dockerBuildPath: "."
-startCommand:
-  type: "http"
-  # 0.0.0.0 대신 localhost를 써야 스캐너가 인식합니다!
-  url: "http://localhost:8000/sse"
+check:
+  docker:
+    dockerfile: Dockerfile
+config:
+  mcpServers:
+    sw2-receipt:
+      url: http://localhost:8000/sse
+      transport: sse
