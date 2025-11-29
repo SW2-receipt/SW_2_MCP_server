@@ -1,18 +1,19 @@
 [project]
 name = "receipt-analyzer"
 version = "0.1.0"
-description = "A simple MCP server"
+description = "Smithery MCP Server"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "mcp",
     "fastapi",
     "uvicorn",
-    "python-dotenv",
-    "pydantic"
-    # 중요: 여기에 pyodbc는 절대 적지 마세요!
+    "pydantic",
+    "python-dotenv"
+    # pyodbc는 뺐습니다! (초록불 필수 조건)
 ]
 
+# ★ 핵심: 실행 명령어를 여기에 등록합니다.
 [project.scripts]
 receipt-analyzer = "mcp_server:main"
 
@@ -20,5 +21,6 @@ receipt-analyzer = "mcp_server:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# ★ 핵심: 현재 폴더에 있는 파일을 다 가져가라고 지정
 [tool.hatch.build.targets.wheel]
 packages = ["."]
