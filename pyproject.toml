@@ -1,0 +1,15 @@
+[project]
+name = "receipt-analyzer"
+version = "0.1.0"
+description = "A simple MCP server"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp",
+    "fastapi",
+    "uvicorn"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
