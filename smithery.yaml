@@ -1,8 +1,10 @@
-check:
-  docker:
-    dockerfile: Dockerfile
-config:
-  mcpServers:
-    sw2-receipt:
-      url: http://localhost:8000/sse
-      transport: sse
+# smithery.yaml
+
+# 1. Dockerfile 위치를 최상위에 명시합니다.
+dockerfile: Dockerfile
+
+# 2. 서버 설정
+mcpServers:
+  sw2-receipt:
+    url: http://localhost:8000/sse
+    transport: sse
