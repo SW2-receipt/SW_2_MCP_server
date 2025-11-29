@@ -1,14 +1,16 @@
 FROM python:3.10-slim
 
-# ODBC 설치 제거 (가볍게!)
 WORKDIR /app
 
-# ★중요: 가짜 재료(requirements_mcp.txt)를 복사해서 설치
-COPY requirements_mcp.txt .
-RUN pip install --no-cache-dir -r requirements_mcp.txt
+# 1. 스미더리용 가짜 의존성 설치 (pyodbc 없음)
+# requirements_mcp.txt가 없으면 그냥 직접 설치합니다.
+RUN pip install fastapi uvicorn python-dotenv pydantic mcp
 
+# 2. 파일 복사
 COPY . .
 
-# 스미더리가 좋아하는 8000번 포트
+# 3. 8000번 포트 열기
 EXPOSE 8000
-CMD ["uvicorn", "mcp_server:mcp._sse_app", "--host", "0.0.0.0", "--port", "8000"]
+
+# 4. 실행 (mcp_server.py 실행)
+CMD ["python", "mcp_server.py"]

@@ -1,2 +1,7 @@
-runtime: "python"
-# startCommand 이런 거 다 필요 없습니다. pyproject.toml이 알아서 합니다.
+runtime: "container"
+build:
+  dockerfile: "Dockerfile.mcp"
+  dockerBuildPath: "."
+startCommand:
+  type: "http"
+  url: "http://0.0.0.0:8000/sse"
