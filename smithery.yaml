@@ -3,4 +3,7 @@ build:
   dockerfile: "Dockerfile"
   dockerBuildPath: "."
 startCommand:
-  type: "http"
+  type: "stdio"
+  command: "python"
+  args:
+    - "mcp_server.py"

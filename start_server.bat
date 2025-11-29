@@ -12,7 +12,9 @@ echo.
 
 call venv\Scripts\activate.bat
 set DISABLE_KONLPY=1
-venv\Scripts\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+REM Python 3.14에서 --reload 옵션은 multiprocessing 오류를 발생시킬 수 있습니다
+REM 오류가 발생하면 아래 줄의 --reload를 제거하세요
+venv\Scripts\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8000
 
 pause
 
