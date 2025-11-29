@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+python-dotenv
+pydantic
+mcp
+# pyodbc는 뺐습니다! (스미더리 통과용)

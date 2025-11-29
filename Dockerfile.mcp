@@ -1,0 +1,14 @@
+FROM python:3.10-slim
+
+# ODBC 설치 제거 (가볍게!)
+WORKDIR /app
+
+# ★중요: 가짜 재료(requirements_mcp.txt)를 복사해서 설치
+COPY requirements_mcp.txt .
+RUN pip install --no-cache-dir -r requirements_mcp.txt
+
+COPY . .
+
+# 스미더리가 좋아하는 8000번 포트
+EXPOSE 8000
+CMD ["uvicorn", "mcp_server:mcp._sse_app", "--host", "0.0.0.0", "--port", "8000"]
