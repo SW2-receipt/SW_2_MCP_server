@@ -1,9 +1,13 @@
 # smithery.yaml
 
-# 1. Dockerfile 위치를 최상위에 명시합니다.
-dockerfile: Dockerfile
+# 스미더리 규칙상 이 부분이 꼭 있어야 통과됩니다. (실제 배포는 Dockerfile로 됨)
+startCommand:
+  type: stdio
+  command: python
+  args:
+    - mcp_server.py
 
-# 2. 서버 설정
+# 여기가 스미더리 웹 배포를 위한 핵심 설정입니다.
 mcpServers:
   sw2-receipt:
     url: http://localhost:8000/sse
