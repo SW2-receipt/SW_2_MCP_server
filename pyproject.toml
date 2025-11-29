@@ -10,6 +10,14 @@ dependencies = [
     "uvicorn"
 ]
 
+# [중요 1] 실행 명령어 등록 (스미더리가 이걸 보고 실행합니다)
+[project.scripts]
+receipt-analyzer = "mcp_server:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+# [중요 2] 파일 위치 지정 (현재 폴더 '.' 에 있는 걸 다 가져가라)
+[tool.hatch.build.targets.wheel]
+packages = ["."]
