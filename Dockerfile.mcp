@@ -2,15 +2,14 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# 1. 스미더리용 가짜 의존성 설치 (pyodbc 없음)
-# requirements_mcp.txt가 없으면 그냥 직접 설치합니다.
+# 필수 라이브러리 직접 설치 (파일 의존성 제거)
 RUN pip install fastapi uvicorn python-dotenv pydantic mcp
 
-# 2. 파일 복사
-COPY . .
+# 파일 복사
+COPY mcp_server.py .
 
-# 3. 8000번 포트 열기
+# 포트 개방
 EXPOSE 8000
 
-# 4. 실행 (mcp_server.py 실행)
+# 실행
 CMD ["python", "mcp_server.py"]

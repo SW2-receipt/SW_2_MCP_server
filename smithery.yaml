@@ -4,4 +4,5 @@ build:
   dockerBuildPath: "."
 startCommand:
   type: "http"
-  url: "http://0.0.0.0:8000/sse"
+  # 0.0.0.0 대신 localhost를 써야 스캐너가 인식합니다!
+  url: "http://localhost:8000/sse"
